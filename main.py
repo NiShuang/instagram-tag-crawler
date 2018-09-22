@@ -8,18 +8,16 @@ import time
 reload(sys)
 sys.setdefaultencoding("utf-8")
 
-# 对于图集，只能取到第一张图的url，若要取后续的图片，需要对每个图集进行一次请求，代价比较大
+# 对于图集，只能取到第一张图的url，若要取后续的图片，需要对每个图集进行一次请求，代价比较大，所以没做
 
 class InsTagCrawler:
     def __init__(self, tag):
+        str(time.time())
         self.tag = tag
-        self.filename = tag + '.txt'    # 存结果的文件路径
+        self.filename = tag + '_' + str(int(time.time())) + '.txt'    # 存结果的文件路径
 
     # max_count 为想要获取的最大post数
     def get_posts_by_tag(self, max_count):
-        # 清空文件里的内容
-        self.write_file_override(self.filename, '')
-
         # 第一次请求的数据来自于HTML源代码
         url = 'https://www.instagram.com/explore/tags/' + self.tag + '/'
         response = requests.get(url=url, verify=False)
@@ -45,16 +43,15 @@ class InsTagCrawler:
         # 后续的数据来自于接口
         while len(post_list) < max_count and has_next_page:
             # 若出现返回错误， 可以尝试休眠
-            time.sleep(0)
             try:
                 response = self.request_api(end_cursor)
+                media_data = json.loads(response)['data']['hashtag']['edge_hashtag_to_media']
+                post_list.extend(self.extract_list(media_data['edges']))
+                has_next_page = media_data['page_info']['has_next_page']
+                end_cursor = media_data['page_info']['end_cursor']
             except:
-                time.sleep(10)
+                time.sleep(60)   # 可以根据实际情况调整休眠时间 单位 秒
                 continue
-            media_data = json.loads(response)['data']['hashtag']['edge_hashtag_to_media']
-            post_list.extend(self.extract_list(media_data['edges']))
-            has_next_page = media_data['page_info']['has_next_page']
-            end_cursor = media_data['page_info']['end_cursor']
 
         post_list = post_list[0:max_count]
         self.sort(post_list, 'like')
@@ -70,6 +67,7 @@ class InsTagCrawler:
 
     # 处理 post_list
     def extract_list(self, post_list):
+        # 过滤掉 video post
         post_list = self.filter_video(post_list)
         result = []
         for post in post_list:
@@ -92,7 +90,7 @@ class InsTagCrawler:
         }
         return temp
 
-
+    # 程序最终结束时，把所有post覆盖写入文件
     def write_result(self,filename, post_list):
         content = ''
         for post in post_list:
